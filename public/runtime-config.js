@@ -18,17 +18,21 @@ window.ORWEB_CONFIG = {
   /**
    * JVM system properties, in CheerpJ's "key=value" form (no -D prefix).
    *
-   * openrocket.3d.disable  OpenRocket's 3D views need native OpenGL bindings
-   *                        (LWJGL/JOGL) that cannot run in WebAssembly. The
-   *                        engine can abort startup with
-   *                        "Error starting OpenRocket" without this.
-   * openrocket.ignore-jre  Skip OpenRocket's desktop JRE version check; the
-   *                        runtime here is fixed by CheerpJ.
-   *
-   * If OpenRocket still refuses to start, add "openrocket.debug.prefs=true"
-   * (in-memory preferences) and reload.
+   * openrocket.3d.disable     OpenRocket's 3D views need native OpenGL
+   *                           bindings (LWJGL/JOGL) that cannot run in
+   *                           WebAssembly; the engine can abort startup with
+   *                           "Error starting OpenRocket".
+   * openrocket.ignore-jre     Skip OpenRocket's desktop JRE version check; the
+   *                           runtime here is fixed by CheerpJ.
+   * openrocket.debug.prefs    In-memory preferences instead of the real store
+   *                           (java.util.prefs has no backing store in the
+   *                           browser).
    */
-  javaProperties: ["openrocket.3d.disable=true", "openrocket.ignore-jre=true"],
+  javaProperties: [
+    "openrocket.3d.disable=true",
+    "openrocket.ignore-jre=true",
+    "openrocket.debug.prefs=true",
+  ],
 
   /** Written by scripts/fetch-openrocket.mjs; used for the version badge. */
   versionManifest: "openrocket-version.json",
