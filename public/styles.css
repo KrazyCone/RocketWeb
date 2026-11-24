@@ -302,6 +302,13 @@ code {
   color: var(--text-muted);
 }
 
+.progress-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .progress-detail {
   font-family: var(--mono);
   font-size: 11px;
@@ -311,6 +318,15 @@ code {
   text-overflow: ellipsis;
 }
 
+.progress-percent {
+  flex: 0 0 auto;
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  color: var(--text);
+}
+
 /* ---------- Stage ---------- */
 
 .stage {
@@ -318,12 +334,18 @@ code {
   min-height: 0;
   min-width: 0;
   background: var(--bg);
-  overflow: hidden;
+  /* OpenRocket's main window wants desktop-sized space. Scroll to it rather
+     than clipping the right-hand side of the UI off-screen. */
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .display {
-  position: absolute;
-  inset: 0;
+  /* CheerpJ sizes its virtual screen from this element, so keep a usable
+     desktop even when the browser window is small. */
+  position: relative;
+  width: max(100%, 1280px);
+  height: max(100%, 800px);
 }
 
 /* CheerpJ injects its display element here; make sure it never overflows. */
@@ -399,11 +421,32 @@ code {
   min-height: 1.5em;
 }
 
+.boot-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .boot-bar {
+  flex: 1 1 auto;
   height: 6px;
   border-radius: 99px;
   background: color-mix(in srgb, var(--text) 9%, transparent);
   overflow: hidden;
+}
+
+.boot-percent {
+  flex: 0 0 auto;
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.boot-reveal {
+  margin-top: 16px;
 }
 
 .boot-bar-fill {
