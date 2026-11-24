@@ -70,7 +70,7 @@ jobs:
             const file = `${process.env.RUNNER_TEMP}/service-account.json`;
             fs.writeFileSync(file, `${JSON.stringify(key)}\n`);
             console.log(`Service account: ${key.client_email}`);
-            console.log(`Firebase project: ${key.project_id}`);
+            console.log(`Key belongs to project: ${key.project_id}`);
 
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `project_id=${key.project_id}\n`);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `credentials=${file}\n`);
@@ -103,7 +103,13 @@ jobs:
       - name: Deploy to Firebase Hosting
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.firebase.outputs.credentials }}
+          # Optional override. When empty the CLI uses .firebaserc, so a key that
+          # belongs to a different Google Cloud project cannot retarget the deploy.
+          PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
         run: |
-          npx --yes firebase-tools@latest deploy --only hosting \
-            --project "${{ vars.FIREBASE_PROJECT_ID || steps.firebase.outputs.project_id }}" \
-            --non-interactive
+          args=(--only hosting --non-interactive)
+          if [ -n "$PROJECT_ID" ]; then
+            args+=(--project "$PROJECT_ID")
+          fi
+          echo "Target project: ${PROJECT_ID:-$(node -p 'JSON.parse(require("fs").readFileSync(".firebaserc", "utf8")).projects.default')}"
+          npx --yes firebase-tools@latest deploy "${args[@]}"
