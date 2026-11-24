@@ -77,6 +77,32 @@ const state = {
   creepTimer: null,
 };
 
+/* --------------------------------------------------------------- java log ---- */
+
+/**
+ * CheerpJ writes Java stdout/stderr through console.*, so mirroring it keeps the
+ * JVM's own diagnostics on the page. OpenRocket catches its startup exceptions
+ * and shows a Swing dialog that vanishes when dismissed; this is how the stack
+ * trace survives that.
+ */
+const javaLog = { lines: [], limit: 500 };
+
+for (const level of ["log", "info", "warn", "error", "debug"]) {
+  const original = console[level]?.bind(console);
+  if (!original) continue;
+  console[level] = (...args) => {
+    const line = args
+      .map((value) => (typeof value === "string" ? value : String(value)))
+      .join(" ")
+      .trimEnd();
+    if (line) {
+      javaLog.lines.push(line);
+      if (javaLog.lines.length > javaLog.limit) javaLog.lines.shift();
+    }
+    original(...args);
+  };
+}
+
 /* -------------------------------------------------------------- helpers ---- */
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -302,6 +328,23 @@ function showError(error) {
   console.error("[openrocket-web]", error);
 }
 
+/**
+ * The JVM came up, OpenRocket started, then it shut itself down (its own
+ * uncaught-exception dialog does this when dismissed). Keep the captured output
+ * on screen instead of leaving a blank stage.
+ */
+function showJavaCrash(exitCode, ranForMs) {
+  const output =
+    javaLog.lines.slice(-200).join("\n").trim() || "(the JVM produced no console output)";
+  showError(new Error(`The JVM exited with code ${exitCode} after ${(ranForMs / 1000).toFixed(1)}s.`));
+  ui.errorTitle.textContent = "OpenRocket closed while starting";
+  ui.errorMessage.textContent =
+    "The Java runtime started, but OpenRocket shut itself down before its window appeared. " +
+    "Its output is below — copy it and the real exception is visible.";
+  ui.errorDetail.textContent = output;
+  ui.errorDetail.hidden = false;
+}
+
 /* ------------------------------------------------------------------ boot ---- */
 
 async function loadManifest() {
@@ -341,6 +384,10 @@ async function boot() {
   await cheerpjInit({
     version: config.javaVersion,
     status: "none",
+    // OpenRocket's 3D views load native OpenGL bindings that cannot exist in
+    // WebAssembly, and its desktop JRE check means nothing inside a fixed
+    // runtime. Both are configurable in public/runtime-config.js.
+    javaProperties: Array.isArray(config.javaProperties) ? config.javaProperties : [],
     // Real download progress for the JVM class libraries.
     preloadProgress(done, total) {
       const ratio = total ? done / total : 0;
@@ -366,10 +413,19 @@ async function boot() {
   setProgress(70, "Starting OpenRocket", "Downloading OpenRocket.jar and opening the window");
   startCreep(70, 96, 60_000, "Downloading OpenRocket.jar and opening the window");
 
-  // Deliberately not awaited: OpenRocket never exits, so this promise never
-  // settles. finishBoot()/scheduleReveal() dismiss the overlay instead.
+  // Deliberately not awaited: OpenRocket keeps running, so this promise would
+  // otherwise never settle. finishBoot()/scheduleReveal() dismiss the overlay.
+  const runStartedAt = performance.now();
   cheerpjRunJar(config.jarPath).then(
-    () => finishBoot("application exited"),
+    (exitCode) => {
+      const ranFor = performance.now() - runStartedAt;
+      if (ranFor < 20_000) {
+        showJavaCrash(exitCode, ranFor);
+      } else {
+        finishBoot("application closed");
+        toast("", "OpenRocket closed", "Reload the page to start it again.", 9000);
+      }
+    },
     (error) => showError(error),
   );
 
@@ -518,6 +574,23 @@ ui.collapse.addEventListener("click", () => {
 });
 
 ui.bootReveal.addEventListener("click", () => finishBoot("manual"));
+
+// The error panel ships with Reload/Troubleshooting; this adds a way to grab the
+// captured JVM output for a bug report.
+const errorCopy = document.createElement("button");
+errorCopy.type = "button";
+errorCopy.className = "btn";
+errorCopy.id = "error-copy";
+errorCopy.textContent = "Copy Java output";
+ui.errorPanel.querySelector(".error-actions")?.append(errorCopy);
+errorCopy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(ui.errorDetail.textContent || "");
+    toast("success", "Copied", "The Java output is on your clipboard.");
+  } catch {
+    toast("error", "Copy failed", "Select the text in the box and copy it manually.", 9000);
+  }
+});
 
 ui.errorReload.addEventListener("click", () => location.reload());
 ui.errorHelp.addEventListener("click", () => {
