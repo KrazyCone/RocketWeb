@@ -339,10 +339,59 @@ function showJavaCrash(exitCode, ranForMs) {
   showError(new Error(`The JVM exited with code ${exitCode} after ${(ranForMs / 1000).toFixed(1)}s.`));
   ui.errorTitle.textContent = "OpenRocket closed while starting";
   ui.errorMessage.textContent =
-    "The Java runtime started, but OpenRocket shut itself down before its window appeared. " +
-    "Its output is below — copy it and the real exception is visible.";
+    "The Java runtime started, but OpenRocket shut itself down. Its output is below — " +
+    "press \"Copy\" and the real exception is in your clipboard. The \"Java output\" " +
+    "button in the toolbar opens this log at any time.";
   ui.errorDetail.textContent = output;
   ui.errorDetail.hidden = false;
+}
+
+/* ---------------------------------------------------------- java output ---- */
+
+function javaOutputText() {
+  return javaLog.lines.join("\n").trim() || "(the JVM has not printed anything yet)";
+}
+
+async function copyJavaOutput() {
+  try {
+    await navigator.clipboard.writeText(javaOutputText());
+    toast("success", "Copied", "The Java output is on your clipboard.");
+  } catch {
+    toast("error", "Copy failed", "Select the text in the box and copy it manually.", 9000);
+  }
+}
+
+/** Always-available view of everything the Java runtime has printed. */
+function openJavaOutput() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "sheet";
+  dialog.innerHTML = `
+    <header class="sheet-head">
+      <h2>Java output</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+    </header>
+    <div class="sheet-body">
+      <p class="field-hint" style="margin-top:0">
+        Everything the Java runtime has printed since this page loaded. If
+        OpenRocket failed to start, the exception is in here.
+      </p>
+      <pre class="error-detail" style="max-height:46dvh"></pre>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-primary" data-copy>Copy</button>
+        <button type="button" class="btn" data-close>Close</button>
+      </div>
+    </div>`;
+  dialog.querySelector("pre").textContent = javaOutputText();
+  dialog.querySelector("[data-copy]").addEventListener("click", copyJavaOutput);
+  dialog.querySelectorAll("[data-close]").forEach((button) => {
+    button.addEventListener("click", () => dialog.close());
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 /* ------------------------------------------------------------------ boot ---- */
@@ -419,7 +468,9 @@ async function boot() {
   cheerpjRunJar(config.jarPath).then(
     (exitCode) => {
       const ranFor = performance.now() - runStartedAt;
-      if (ranFor < 20_000) {
+      // A non-zero exit, or an exit before the window was ever revealed, means
+      // the app died rather than being closed by the user.
+      if (exitCode !== 0 || !state.booted) {
         showJavaCrash(exitCode, ranFor);
       } else {
         finishBoot("application closed");
@@ -583,14 +634,18 @@ errorCopy.className = "btn";
 errorCopy.id = "error-copy";
 errorCopy.textContent = "Copy Java output";
 ui.errorPanel.querySelector(".error-actions")?.append(errorCopy);
-errorCopy.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(ui.errorDetail.textContent || "");
-    toast("success", "Copied", "The Java output is on your clipboard.");
-  } catch {
-    toast("error", "Copy failed", "Select the text in the box and copy it manually.", 9000);
-  }
-});
+errorCopy.addEventListener("click", copyJavaOutput);
+
+// Always reachable, so the Java log is readable even when OpenRocket's own
+// dialog comes and goes.
+const javaOutputButton = document.createElement("button");
+javaOutputButton.type = "button";
+javaOutputButton.className = "btn";
+javaOutputButton.id = "java-output";
+javaOutputButton.textContent = "Java output";
+javaOutputButton.title = "Show everything the Java runtime has printed";
+javaOutputButton.addEventListener("click", openJavaOutput);
+document.getElementById("toolbar-actions")?.append(javaOutputButton);
 
 ui.errorReload.addEventListener("click", () => location.reload());
 ui.errorHelp.addEventListener("click", () => {
@@ -612,6 +667,7 @@ window.openrocketWeb = {
   state,
   downloadFromVirtualFs,
   stageFileForJava,
+  javaOutput: javaOutputText,
   reload: () => location.reload(),
 };
 
