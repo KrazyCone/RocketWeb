@@ -32,6 +32,50 @@ jobs:
         with:
           node-version: 22
 
+      # Catches a mangled or empty secret here, with a readable message,
+      # instead of as a confusing "Failed to authenticate" during the deploy.
+      - name: Validate the Firebase service account
+        id: firebase
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+
+            const fail = (message) => {
+              console.error(`::error::${message}`);
+              process.exit(1);
+            };
+
+            const raw = (process.env.SERVICE_ACCOUNT ?? "").trim();
+            if (!raw) {
+              fail("Repository secret FIREBASE_SERVICE_ACCOUNT is empty. Add the service-account key JSON under Settings > Secrets and variables > Actions.");
+            }
+
+            // Accept the raw key JSON or its base64 form, which survives copy/paste intact.
+            const isJson = raw.startsWith("{");
+            const text = isJson ? raw : Buffer.from(raw.replace(/\s+/g, ""), "base64").toString("utf8");
+
+            let key;
+            try {
+              key = JSON.parse(text);
+            } catch (error) {
+              fail(`FIREBASE_SERVICE_ACCOUNT is not valid JSON (${raw.length} characters stored, ${isJson ? "read as JSON" : "read as base64"}): ${error.message}. Download a fresh key JSON from Google Cloud > IAM & Admin > Service Accounts > Keys, then run: gh secret set FIREBASE_SERVICE_ACCOUNT < key.json`);
+            }
+
+            if (key.type !== "service_account" || !key.project_id || !key.private_key) {
+              fail("FIREBASE_SERVICE_ACCOUNT is valid JSON but not a service-account key: it needs type=service_account, project_id and private_key.");
+            }
+
+            const file = `${process.env.RUNNER_TEMP}/service-account.json`;
+            fs.writeFileSync(file, `${JSON.stringify(key)}\n`);
+            console.log(`Service account: ${key.client_email}`);
+            console.log(`Firebase project: ${key.project_id}`);
+
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `project_id=${key.project_id}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `credentials=${file}\n`);
+          '
+
       - name: Download the latest official OpenRocket JAR
         env:
           # The workflow token lifts GitHub API rate limits for release lookup.
@@ -57,10 +101,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ vars.FIREBASE_PROJECT_ID || 'rocket-on-web' }}
-          channelId: live
-          entryPoint: .
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.firebase.outputs.credentials }}
+        run: |
+          npx --yes firebase-tools@latest deploy --only hosting \
+            --project "${{ vars.FIREBASE_PROJECT_ID || steps.firebase.outputs.project_id }}" \
+            --non-interactive
