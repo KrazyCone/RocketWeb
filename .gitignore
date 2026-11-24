@@ -1,0 +1,16 @@
+# Downloaded at build time by scripts/fetch-openrocket.mjs -- never commit it.
+public/OpenRocket.jar
+public/openrocket-version.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# Tooling
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
