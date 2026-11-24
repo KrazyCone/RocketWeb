@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>OpenRocket Web — design &amp; simulate model rockets in your browser</title>
+    <meta
+      name="description"
+      content="Run the official OpenRocket rocket design and flight simulation software in your browser. No install, no account, no server: it runs locally in WebAssembly."
+    />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <!--
+      CheerpJ 4.3 — the WebAssembly JVM that runs the unmodified OpenRocket JAR
+      entirely in the browser. OpenRocket 24.12 is built for Java 17, so a
+      Java 17-capable CheerpJ build is required (3.0 is Java 8 only and cannot
+      load it). See README.md > "CheerpJ and Java compatibility".
+      Runtime docs: https://cheerpj.com/docs
+    -->
+    <script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
+    <script src="runtime-config.js"></script>
+  </head>
+
+  <body>
+    <div class="app" id="app">
+      <!-- ================= Toolbar ================= -->
+      <header class="topbar" id="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">OR</span>
+          <span class="brand-text">
+            <strong>OpenRocket Web</strong>
+            <span class="brand-sub" id="version-badge">Preparing runtime…</span>
+          </span>
+        </div>
+
+        <nav class="actions" id="toolbar-actions" aria-label="Project actions">
+          <button type="button" class="btn btn-primary" id="open-file">
+            Open .ork…
+          </button>
+          <button type="button" class="btn" id="save-device">
+            Save to device…
+          </button>
+          <button type="button" class="btn" id="tips-toggle" aria-expanded="false" aria-controls="tips">
+            How it works
+          </button>
+          <button type="button" class="btn btn-ghost" id="restart" title="Reload the page and start the JVM again">
+            Restart
+          </button>
+        </nav>
+
+        <button
+          type="button"
+          class="icon-btn collapse-btn"
+          id="collapse"
+          aria-expanded="true"
+          aria-controls="toolbar-actions"
+          title="Collapse toolbar"
+        >
+          <span aria-hidden="true">⌃</span>
+          <span class="sr-only">Collapse or expand the toolbar</span>
+        </button>
+
+        <input
+          type="file"
+          id="file-input"
+          accept=".ork,.ork.gz,application/zip,application/octet-stream"
+          hidden
+        />
+      </header>
+
+      <!-- ================= Boot progress ================= -->
+      <div class="progress" id="boot-progress" role="status" aria-live="polite">
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <p class="progress-labels">
+          <span id="progress-stage">Starting…</span>
+          <span id="progress-detail" class="progress-detail"></span>
+        </p>
+      </div>
+
+      <!-- ================= Application stage ================= -->
+      <main class="stage" id="stage">
+        <!-- cheerpjCreateDisplay(-1, -1, #display) fills this element -->
+        <div id="display" class="display"></div>
+
+        <div class="boot-overlay" id="boot-overlay">
+          <div class="boot-card">
+            <div class="spinner" id="spinner" aria-hidden="true"></div>
+            <h1>Loading OpenRocket</h1>
+            <p class="boot-message" id="boot-message">
+              Starting the WebAssembly Java runtime…
+            </p>
+            <div class="boot-bar"><div class="boot-bar-fill" id="boot-bar-fill"></div></div>
+            <p class="boot-hint">
+              Everything runs on your device. The first visit downloads the Java
+              runtime and the OpenRocket JAR (~80&nbsp;MB); later visits are cached.
+            </p>
+          </div>
+        </div>
+
+        <div class="error-panel" id="error-panel" hidden>
+          <div class="error-card">
+            <h2 id="error-title">OpenRocket could not start</h2>
+            <p id="error-message"></p>
+            <pre class="error-detail" id="error-detail" hidden></pre>
+            <div class="error-actions">
+              <button type="button" class="btn btn-primary" id="error-reload">Reload page</button>
+              <button type="button" class="btn" id="error-help">Troubleshooting</button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- ================= Footer ================= -->
+      <footer class="footer">
+        <p class="attribution">
+          Powered by
+          <a href="https://openrocket.info" target="_blank" rel="noopener noreferrer">OpenRocket</a>
+          — free &amp; open source rocket design software, licensed under the
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU GPLv3</a>.
+          Java in the browser by
+          <a href="https://cheerpj.com" target="_blank" rel="noopener noreferrer">CheerpJ</a>.
+          This site is an independent wrapper and is not affiliated with the OpenRocket project.
+        </p>
+
+        <!--
+          Google AdSense slot.
+          Replace the placeholder label with your ad unit once your account is approved:
+
+            <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXX"
+                 data-ad-slot="XXXXXXXXXX" data-ad-format="auto" data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+          Also add the AdSense loader to <head> and publish an ads.txt in public/.
+        -->
+        <aside class="ad-slot" id="ad-slot" aria-label="Advertisement" data-ad-slot="openrocket-web-footer">
+          <span class="ad-slot-label">Advertisement</span>
+          <span class="ad-slot-note">Reserved space — AdSense unit goes here</span>
+        </aside>
+      </footer>
+    </div>
+
+    <!-- ================= Help / tips ================= -->
+    <dialog class="sheet" id="tips" aria-labelledby="tips-title">
+      <header class="sheet-head">
+        <h2 id="tips-title">Opening and saving designs</h2>
+        <button type="button" class="icon-btn" id="tips-close" aria-label="Close">✕</button>
+      </header>
+
+      <div class="sheet-body">
+        <section>
+          <h3>Open a design from your computer</h3>
+          <ol>
+            <li>
+              <strong>Upload button (easiest):</strong> CheerpJ draws an upload arrow in the
+              title bar of the OpenRocket window. Use it to pick a <code>.ork</code> file, then
+              choose <em>File → Open</em> inside OpenRocket.
+            </li>
+            <li>
+              <strong>Toolbar:</strong> press <em>Open .ork…</em> at the top of this page. The
+              file is staged in the virtual filesystem at <code>/str/&lt;filename&gt;</code>.
+              In OpenRocket choose <em>File → Open…</em> and type that path into the file name
+              field.
+            </li>
+            <li>
+              <strong>Bundled examples:</strong> OpenRocket ships example rockets inside the JAR —
+              use <em>File → Open Example</em> in the app menu for an instant design to play with.
+            </li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>Save a design or simulation CSV to your device</h3>
+          <ol>
+            <li>
+              In OpenRocket use <em>File → Save As…</em> (or <em>Export</em> for CSV) and save
+              into <code>/files/downloads/</code>. CheerpJ 4.3 sends files saved there straight to
+              your browser's download folder.
+            </li>
+            <li>
+              Saved somewhere else under <code>/files/</code>? Press
+              <em>Save to device…</em> on this page and enter the file name — the page reads it
+              out of the virtual filesystem and downloads it.
+            </li>
+            <li>
+              Files under <code>/files/</code> persist in this browser between visits, so an
+              interrupted session is not lost.
+            </li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>What is different from the desktop app</h3>
+          <ul>
+            <li>
+              The 3D flight visualisation uses OpenGL (JOGL) and does not run in WebAssembly;
+              2D views, component editing and the simulation engine work normally.
+            </li>
+            <li>Printing, native file dialogs outside the virtual filesystem and OS integration are unavailable.</li>
+            <li>Large simulations run noticeably slower than on a desktop JVM.</li>
+            <li>Your designs never leave your device: no upload, no account, no server.</li>
+          </ul>
+        </section>
+      </div>
+    </dialog>
+
+    <!-- ================= Save-to-device dialog ================= -->
+    <dialog class="sheet" id="save-dialog" aria-labelledby="save-title">
+      <header class="sheet-head">
+        <h2 id="save-title">Save a file from the virtual filesystem</h2>
+        <button type="button" class="icon-btn" id="save-close" aria-label="Close">✕</button>
+      </header>
+      <form class="sheet-body" id="save-form">
+        <label class="field">
+          <span>File name inside <code>/files/</code></span>
+          <input
+            type="text"
+            id="save-name"
+            name="filename"
+            placeholder="my-rocket.ork"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <p class="field-hint">
+          Files saved to <code>/files/downloads/</code> are downloaded automatically; this box
+          is for everything else under <code>/files/</code>. A bare name is looked up in
+          <code>/files/</code> and then <code>/files/downloads/</code>.
+        </p>
+        <div class="sheet-actions">
+          <button type="submit" class="btn btn-primary" id="save-submit">Download file</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast-stack" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+    <noscript>
+      <p class="noscript">
+        OpenRocket Web needs JavaScript and WebAssembly. Enable JavaScript to use it.
+      </p>
+    </noscript>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
