@@ -76,7 +76,10 @@
         </div>
         <p class="progress-labels">
           <span id="progress-stage">Starting…</span>
-          <span id="progress-detail" class="progress-detail"></span>
+          <span class="progress-meta">
+            <span id="progress-detail" class="progress-detail"></span>
+            <span id="progress-percent" class="progress-percent">0%</span>
+          </span>
         </p>
       </div>
 
@@ -92,7 +95,15 @@
             <p class="boot-message" id="boot-message">
               Starting the WebAssembly Java runtime…
             </p>
-            <div class="boot-bar"><div class="boot-bar-fill" id="boot-bar-fill"></div></div>
+            <div class="boot-bar-row">
+              <div class="boot-bar">
+                <div class="boot-bar-fill" id="boot-bar-fill"></div>
+              </div>
+              <span class="boot-percent" id="boot-percent">0%</span>
+            </div>
+            <button type="button" class="btn boot-reveal" id="boot-reveal" hidden>
+              Show the app window
+            </button>
             <p class="boot-hint">
               Everything runs on your device. The first visit downloads the Java
               runtime and the OpenRocket JAR (~80&nbsp;MB); later visits are cached.
