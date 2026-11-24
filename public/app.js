@@ -21,6 +21,13 @@ const config = {
 
 const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 const BOOT_TIMEOUT_MS = 30_000;
+/*
+ * cheerpjRunJar() resolves only when the main class exits. OpenRocket is a GUI
+ * application that keeps running, so that promise never settles: the overlay
+ * has to be dismissed on its own schedule instead of waiting for it.
+ */
+const REVEAL_BUTTON_AFTER_MS = 12_000;
+const REVEAL_OVERLAY_AFTER_MS = 45_000;
 
 /* ------------------------------------------------------------------ DOM ---- */
 
@@ -39,10 +46,14 @@ const ui = {
   progressFill: $("progress-fill"),
   progressStage: $("progress-stage"),
   progressDetail: $("progress-detail"),
+  progressPercent: $("progress-percent"),
   display: $(config.displayElementId),
   bootOverlay: $("boot-overlay"),
   bootMessage: $("boot-message"),
   bootBar: $("boot-bar-fill"),
+  bootPercent: $("boot-percent"),
+  bootReveal: $("boot-reveal"),
+  stage: $("stage"),
   errorPanel: $("error-panel"),
   errorTitle: $("error-title"),
   errorMessage: $("error-message"),
@@ -90,6 +101,8 @@ function setProgress(value, stage, detail) {
   const percent = clamp(Math.round(value), 0, 100);
   ui.progressFill.style.width = `${percent}%`;
   ui.bootBar.style.width = `${percent}%`;
+  if (ui.progressPercent) ui.progressPercent.textContent = `${percent}%`;
+  if (ui.bootPercent) ui.bootPercent.textContent = `${percent}%`;
   if (stage) {
     ui.progressStage.textContent = stage;
     ui.bootMessage.textContent = stage;
@@ -98,20 +111,27 @@ function setProgress(value, stage, detail) {
   if (detail !== null) ui.progressDetail.textContent = detail || "";
 }
 
-/** Progress that eases towards a ceiling while a long, unmeasurable step runs. */
-function startCreep(from, ceiling, durationMs) {
+/**
+ * Progress that eases towards a ceiling while a long, unmeasurable step runs.
+ * The elapsed counter is what tells a visitor the page is still working when
+ * the percentage has stopped moving.
+ */
+function startCreep(from, ceiling, durationMs, detailLabel) {
   stopCreep();
   const started = performance.now();
   let current = from;
   state.creepTimer = setInterval(() => {
-    const elapsed = (performance.now() - started) / durationMs;
-    current = Math.max(current, from);
-    const target = from + (ceiling - from) * clamp(elapsed, 0, 1);
+    const elapsed = performance.now() - started;
+    const target = from + (ceiling - from) * clamp(elapsed / durationMs, 0, 1);
     if (target > current) {
       current += (target - current) * 0.25;
       setProgress(current, null, null);
     }
-  }, 350);
+    // null detail from setProgress keeps the line alone; this keeps it alive.
+    if (detailLabel && !state.booted && !state.failed) {
+      ui.progressDetail.textContent = `${detailLabel} · ${Math.round(elapsed / 1000)}s`;
+    }
+  }, 400);
 }
 
 function stopCreep() {
@@ -119,6 +139,52 @@ function stopCreep() {
     clearInterval(state.creepTimer);
     state.creepTimer = null;
   }
+}
+
+/* ---------------------------------------------------------------- reveal ---- */
+
+/** Idempotent: dismiss the boot overlay and treat the app as running. */
+function finishBoot(reason) {
+  if (state.booted || state.failed) return;
+  state.booted = true;
+  stopCreep();
+
+  setProgress(100, "Ready", "");
+  ui.progress.classList.add("is-done");
+  ui.bootOverlay.classList.add("is-hidden");
+  if (ui.bootReveal) ui.bootReveal.hidden = true;
+
+  const manifest = state.manifest;
+  ui.badge.textContent = manifest?.version
+    ? `OpenRocket ${manifest.version} · Java ${config.javaVersion}`
+    : `OpenRocket · Java ${config.javaVersion}`;
+
+  console.info(
+    `[openrocket-web] stage revealed (${reason}) after ` +
+      `${((performance.now() - state.startedAt) / 1000).toFixed(1)}s`,
+  );
+}
+
+/**
+ * Offer a manual reveal early, then stop hiding the stage behind the overlay.
+ * A blank stage is less confusing than a progress bar that never finishes, and
+ * the top progress bar keeps reporting while the JVM is still warming up.
+ */
+function scheduleReveal() {
+  setTimeout(() => {
+    if (!state.booted && !state.failed && ui.bootReveal) ui.bootReveal.hidden = false;
+  }, REVEAL_BUTTON_AFTER_MS);
+
+  setTimeout(() => {
+    if (state.booted || state.failed) return;
+    finishBoot("timeout");
+    toast(
+      "",
+      "OpenRocket is still starting",
+      "The window will appear here as soon as the Java runtime finishes loading.",
+      10_000,
+    );
+  }, REVEAL_OVERLAY_AFTER_MS);
 }
 
 function toast(kind, title, message, ttl = 6500) {
@@ -295,32 +361,19 @@ async function boot() {
     manifest?.asset ? `${manifest.asset}${manifest.bytes ? ` · ${formatBytes(manifest.bytes)}` : ""}` : config.jarPath,
   );
 
-  // The JAR download + class loading has no progress callback, so ease the bar
-  // forward instead of leaving it frozen.
-  startCreep(66, 92, 30_000);
+  // Neither the JAR download nor the JVM start reports progress, so ease the
+  // bar forward and keep an elapsed counter ticking next to it.
+  setProgress(70, "Starting OpenRocket", "Downloading OpenRocket.jar and opening the window");
+  startCreep(70, 96, 60_000, "Downloading OpenRocket.jar and opening the window");
 
-  try {
-    await cheerpjRunJar(config.jarPath);
-  } finally {
-    stopCreep();
-  }
-
-  // Waiting for the JVM to render the first window looks better than a blank
-  // stage, so hold the overlay briefly.
-  setProgress(97, "Starting OpenRocket", "");
-  await wait(900);
-
-  state.booted = true;
-  setProgress(100, "Ready", "");
-  ui.progress.classList.add("is-done");
-  ui.bootOverlay.classList.add("is-hidden");
-  ui.badge.textContent = manifest?.version
-    ? `OpenRocket ${manifest.version} · Java ${config.javaVersion}`
-    : `OpenRocket · Java ${config.javaVersion}`;
-
-  console.info(
-    `[openrocket-web] ready in ${((performance.now() - state.startedAt) / 1000).toFixed(1)}s`,
+  // Deliberately not awaited: OpenRocket never exits, so this promise never
+  // settles. finishBoot()/scheduleReveal() dismiss the overlay instead.
+  cheerpjRunJar(config.jarPath).then(
+    () => finishBoot("application exited"),
+    (error) => showError(error),
   );
+
+  scheduleReveal();
 }
 
 /* ------------------------------------------------------- file transfers ---- */
@@ -463,6 +516,8 @@ ui.collapse.addEventListener("click", () => {
   ui.collapse.setAttribute("aria-expanded", String(!collapsed));
   ui.collapse.title = collapsed ? "Expand toolbar" : "Collapse toolbar";
 });
+
+ui.bootReveal.addEventListener("click", () => finishBoot("manual"));
 
 ui.errorReload.addEventListener("click", () => location.reload());
 ui.errorHelp.addEventListener("click", () => {
