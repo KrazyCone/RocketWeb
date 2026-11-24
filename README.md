@@ -21,7 +21,7 @@ static files, so it fits comfortably on Firebase Hosting's free Spark plan.
 
 ## What is in this repository
 
-14 tracked files — roughly 60 KB of HTML, CSS, JavaScript and Node scripts, plus the GPLv3
+15 tracked files — roughly 60 KB of HTML, CSS, JavaScript and Node scripts, plus the GPLv3
 licence text — with **zero npm dependencies** and no build step. The 83 MB application JAR is
 **not** committed: it is downloaded from the official releases at build time and is
 git-ignored.
@@ -42,13 +42,19 @@ git-ignored.
 | `.github/workflows/deploy.yml` | CI: fetch JAR → verify → deploy to Firebase Hosting on push to `main` | ✅ |
 | `package.json` | npm scripts only — nothing to install | ✅ |
 | `.gitignore` | Keeps the downloaded JAR and `openrocket-version.json` out of git | ✅ |
-| `LICENSE` | GNU GPLv3 (the same licence as OpenRocket) | ✅ |
+| `LICENSE` | GNU GPLv3 — title, preamble and sections 0-6 (the same licence as OpenRocket) | ✅ |
+| `COPYING` | GNU GPLv3 continued — sections 7-17 and the “how to apply” appendix | ✅ |
+
+> The GNU GPLv3 text is the standard FSF document, stored as two files (`LICENSE` then
+> `COPYING`) purely so each file stays under 18 KB and readable in any editor. Together they
+> are the complete, unmodified licence.
 
 ```
 RocketWeb/
 ├── .github/workflows/deploy.yml
 ├── .firebaserc
 ├── .gitignore
+├── COPYING
 ├── LICENSE
 ├── README.md
 ├── firebase.json
@@ -435,9 +441,9 @@ These come from running a desktop Swing application inside a WebAssembly sandbox
   [GNU General Public License v3](https://www.gnu.org/licenses/gpl-3.0.html). Upstream source:
   <https://github.com/openrocket/openrocket>. The JAR is redistributed unmodified, exactly as
   published in the official releases; this repository contains no OpenRocket source code.
-- **This wrapper** — released under the GPLv3 as well (see `LICENSE`), which keeps the whole
-  combination consistent with OpenRocket's licence. If you deploy it, keep the attribution
-  footer and make the corresponding source available.
+- **This wrapper** — released under the GPLv3 as well (see `LICENSE` and `COPYING`), which
+  keeps the whole combination consistent with OpenRocket's licence. If you deploy it, keep
+  the attribution footer and make the corresponding source available.
 - **CheerpJ** — © Leaning Technologies, used under the
   [CheerpJ Community licence](https://cheerpj.com/docs/licensing): free for personal,
   educational and FOSS use, loaded from the CheerpJ CDN, with a visible credit. The page
