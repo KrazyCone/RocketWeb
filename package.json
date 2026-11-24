@@ -1,0 +1,27 @@
+{
+  "name": "rocketweb",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Run the official OpenRocket desktop application in a web browser with CheerpJ, hosted for free on Firebase Hosting.",
+  "homepage": "https://github.com/KrazyCone/RocketWeb",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "fetch": "node scripts/fetch-openrocket.mjs",
+    "fetch:force": "node scripts/fetch-openrocket.mjs --force",
+    "start": "node scripts/serve.mjs",
+    "verify": "node scripts/verify-build.mjs",
+    "deploy": "npm run fetch && npx --yes firebase-tools@latest deploy --only hosting"
+  },
+  "keywords": [
+    "openrocket",
+    "cheerpj",
+    "webassembly",
+    "rocketry",
+    "firebase-hosting",
+    "rocketweb"
+  ]
+}
