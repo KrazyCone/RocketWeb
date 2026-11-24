@@ -1,0 +1,66 @@
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      openrocket_version:
+        description: "Pin an OpenRocket release (e.g. 24.12). Leave empty for the latest release."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-hosting-live
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download the latest official OpenRocket JAR
+        env:
+          # The workflow token lifts GitHub API rate limits for release lookup.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROCKET_VERSION: ${{ inputs.openrocket_version }}
+        run: node scripts/fetch-openrocket.mjs
+
+      - name: Verify the deployable output
+        run: node scripts/verify-build.mjs
+
+      - name: Add build summary
+        run: |
+          {
+            echo "### OpenRocket Web"
+            echo
+            node -e '
+            const m = require("./public/openrocket-version.json");
+            console.log(`- OpenRocket release: **${m.version}** (${m.asset})`);
+            console.log(`- JAR size: **${(m.bytes / 1e6).toFixed(1)} MB**`);
+            console.log(`- sha256: \`${m.sha256}\``);
+            console.log(`- Fetched: ${m.fetchedAt}`);
+            '
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ vars.FIREBASE_PROJECT_ID || 'rocket-on-web' }}
+          channelId: live
+          entryPoint: .
